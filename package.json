@@ -1,0 +1,44 @@
+{
+  "name": "@mcpcontrol/hue",
+  "version": "0.1.0",
+  "description": "MCP server for controlling Philips Hue lights",
+  "bin": {
+    "hue-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/index.js",
+    "dev": "NODE_OPTIONS=\"--loader ts-node/esm\" node src/index.ts",
+    "prepare": "npm run build"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "philips-hue",
+    "hue",
+    "lights",
+    "home-automation",
+    "iot"
+  ],
+  "author": "Ben Newton <bennewton999@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bennewton999/hue-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bennewton999/hue-mcp/issues"
+  },
+  "homepage": "https://github.com/bennewton999/hue-mcp#readme",
+  "dependencies": {
+    "@types/node": "^22.15.17",
+    "dotenv": "^16.0.3",
+    "node-hue-api": "^4.0.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
