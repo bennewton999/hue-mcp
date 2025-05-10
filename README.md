@@ -8,18 +8,27 @@ A Model Context Protocol (MCP) server for controlling Philips Hue lights. This p
 - A Philips Hue Bridge
 - One or more Philips Hue lights
 
-## Installation
+## Running Locally
 
-You can install the package globally:
-
+1. Clone the repository:
 ```bash
-npm install -g @mcpcontrol/hue
+git clone https://github.com/bennewton999/hue-mcp.git
+cd hue-mcp
 ```
 
-Or run it directly with npx:
-
+2. Install dependencies:
 ```bash
-npx @mcpcontrol/hue
+npm install
+```
+
+3. Build the project:
+```bash
+npm run build
+```
+
+4. Start the server:
+```bash
+npm start
 ```
 
 ## Getting Started
@@ -102,20 +111,59 @@ code .
    - Start Server: Use the integrated terminal and run `npm run dev`
    - Debug: Press F5 or use the Run and Debug view
 
-#### Using with VS Code as a Client
+#### Using with VS Code and GitHub Copilot
 
-1. Install the MCP extension for VS Code
-2. Open VS Code settings (Cmd/Ctrl + ,)
-3. Search for "MCP"
-4. Add a new MCP server with:
-   - Name: Hue Lights
-   - URL: tcp://localhost:3000
+The Hue MCP server integrates with VS Code's agent mode in GitHub Copilot to enable natural language control of your Hue lights.
 
-5. Test the connection:
-   - Open VS Code Command Palette (Cmd/Ctrl + Shift + P)
-   - Type "MCP: Connect to Server"
-   - Select "Hue Lights"
-   - The status bar should show "MCP: Connected"
+1. Prerequisites:
+   - Latest version of VS Code
+   - GitHub Copilot extension installed and configured
+   - MCP support enabled in VS Code (enabled by default in VS Code 1.99+)
+
+2. Configure the MCP Server:
+   Create a `.vscode/mcp.json` file in your workspace:
+   ```json
+   {
+     "inputs": [
+       {
+         "type": "promptString",
+         "id": "hue-bridge-ip",
+         "description": "Hue Bridge IP Address"
+       },
+       {
+         "type": "promptString",
+         "id": "hue-username",
+         "description": "Hue Bridge Username",
+         "password": true
+       }
+     ],
+     "servers": {
+       "Hue Lights": {
+         "type": "stdio",
+         "command": "node",
+         "args": ["./dist/index.js"],
+         "env": {
+           "HUE_BRIDGE_IP": "${input:hue-bridge-ip}",
+           "HUE_USERNAME": "${input:hue-username}"
+         }
+       }
+     }
+   }
+   ```
+
+3. Use with GitHub Copilot:
+   - Open the Chat view (⌃⌘I on macOS, Ctrl+Alt+I on Windows/Linux)
+   - Select "Agent mode" from the dropdown
+   - Click the "Tools" button to see available Hue commands
+   - Start controlling your lights with natural language! Examples:
+     - "Turn on the hallway light"
+     - "Set the desk light to bright red"
+     - "Start a disco effect on the living room lights"
+
+4. Advanced Usage:
+   - Use `#` to directly reference specific tools in your prompts
+   - Use the Continue button dropdown to auto-approve specific actions
+   - View server logs through Command Palette > "MCP: List Servers" > "Show Output"
 
 #### Debugging in VS Code
 
