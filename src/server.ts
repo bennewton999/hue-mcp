@@ -1,6 +1,21 @@
 import { createServer } from 'net';
-import * as nodeHueApi from 'node-hue-api';
-const { v3 } = nodeHueApi;
+import { v3 } from 'node-hue-api';
+
+interface MCPCommand {
+  type: string;
+  lightId?: string;
+  color?: [number, number, number];
+  times?: number; // Number of times to flash
+  brightness?: number; // 0-100
+  effectType?: string; // colorloop, none
+  transitionTime?: number; // in milliseconds
+  alert?: 'none' | 'select' | 'lselect'; // none = no alert, select = single flash, lselect = flash for 15s
+  temperature?: number; // color temperature in Kelvin (2000-6500)
+  scene?: string; // scene identifier
+  group?: string; // group identifier
+  duration?: number; // Duration in seconds for effects like disco
+  speed?: number; // Speed of effect (milliseconds between changes)
+}
 
 interface HueState {
   bridge: any;
@@ -42,21 +57,37 @@ export async function startMCPServer(port: number = 3000) {
       JSON.stringify({
         type: 'hello',
         version: '1.0.0',
-        capabilities: ['lights', 'colors', 'flash']
+        capabilities: [
+          'lights',
+          'colors',
+          'flash',
+          'brightness',
+          'effects',
+          'temperature',
+          'scenes',
+          'groups',
+          'disco'
+        ]
       }) + '\n'
     );
   });
 
   // Initialize Hue bridge connection
   try {
+    console.log('Initializing Hue bridge connection...');
     await initializeHueBridge();
+    console.log('Hue bridge initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Hue bridge:', error);
     throw error;
   }
 
   server.listen(port, () => {
+    console.log('=================================');
     console.log(`MCP server listening on port ${port}`);
+    console.log(`Connected to Hue bridge at ${process.env.HUE_BRIDGE_IP}`);
+    console.log(`Found ${state.lights.length} lights`);
+    console.log('=================================');
   });
 }
 
@@ -82,22 +113,33 @@ async function initializeHueBridge() {
   }
 }
 
-interface MCPCommand {
-  type: string;
-  lightId?: string;
-  color?: [number, number, number];
-  times?: number; // Number of times to flash
-}
-
 interface MCPResponse {
   type: string;
   error?: string;
+  success?: boolean;
   lights?: Array<{
     id: string;
     name: string;
     state: any;
   }>;
-  success?: boolean;
+  groups?: Array<{
+    id: string;
+    name: string;
+    lights: string[];
+    state: any;
+  }>;
+  scenes?: Array<{
+    id: string;
+    name: string;
+    lights: string[];
+  }>;
+  schedules?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    localtime: string;
+    status: string;
+  }>;
 }
 
 async function handleMessage(message: string, socket: any): Promise<void> {
@@ -124,6 +166,29 @@ async function handleCommand(command: MCPCommand): Promise<MCPResponse> {
           id: light.id,
           name: light.name,
           state: light.state
+        }))
+      };
+
+    case 'get_groups':
+      const groups = await state.bridge.groups.getAll();
+      return {
+        type: 'groups_list',
+        groups: groups.map((group: any) => ({
+          id: group.id,
+          name: group.name,
+          lights: group.lights,
+          state: group.state
+        }))
+      };
+
+    case 'get_scenes':
+      const scenes = await state.bridge.scenes.getAll();
+      return {
+        type: 'scenes_list',
+        scenes: scenes.map((scene: any) => ({
+          id: scene.id,
+          name: scene.name,
+          lights: scene.lights
         }))
       };
 
@@ -172,20 +237,171 @@ async function handleCommand(command: MCPCommand): Promise<MCPResponse> {
           });
           await new Promise(resolve => setTimeout(resolve, 500));
         }
-        // End with the light on and the color set
         await state.bridge.lights.setLightState(command.lightId, {
           on: true,
           bri: 254,
           rgb: command.color
         });
-        return {
-          type: 'success',
-          success: true
-        };
+        return { type: 'success', success: true };
       } catch (error: any) {
         return {
           type: 'error',
           error: error.message || 'Failed to flash light'
+        };
+      }
+
+    case 'set_brightness':
+      if (!command.lightId || command.brightness === undefined) {
+        return { type: 'error', error: 'Missing lightId or brightness' };
+      }
+      try {
+        const bri = Math.round((command.brightness / 100) * 254);
+        await state.bridge.lights.setLightState(command.lightId, {
+          on: true,
+          bri
+        });
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to set brightness'
+        };
+      }
+
+    case 'set_effect':
+      if (!command.lightId || !command.effectType) {
+        return { type: 'error', error: 'Missing lightId or effectType' };
+      }
+      try {
+        await state.bridge.lights.setLightState(command.lightId, {
+          effect: command.effectType
+        });
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to set effect'
+        };
+      }
+
+    case 'set_temperature':
+      if (!command.lightId || !command.temperature) {
+        return { type: 'error', error: 'Missing lightId or temperature' };
+      }
+      try {
+        // Convert Kelvin to Mired (what Hue uses)
+        const ct = Math.round(1000000 / command.temperature);
+        await state.bridge.lights.setLightState(command.lightId, {
+          on: true,
+          ct
+        });
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to set color temperature'
+        };
+      }
+
+    case 'activate_scene':
+      if (!command.scene) {
+        return { type: 'error', error: 'Missing scene identifier' };
+      }
+      try {
+        await state.bridge.scenes.activateScene(command.scene);
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to activate scene'
+        };
+      }
+
+    case 'set_group_state':
+      if (!command.group) {
+        return { type: 'error', error: 'Missing group identifier' };
+      }
+      try {
+        const state: any = {};
+        if (command.color) state.rgb = command.color;
+        if (command.brightness !== undefined)
+          state.bri = Math.round((command.brightness / 100) * 254);
+        if (command.temperature)
+          state.ct = Math.round(1000000 / command.temperature);
+        if (command.effectType) state.effect = command.effectType;
+
+        await state.bridge.groups.setGroupState(command.group, state);
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to set group state'
+        };
+      }
+
+    case 'disco':
+      if (!command.lightId) {
+        return { type: 'error', error: 'Missing lightId' };
+      }
+      try {
+        const duration = command.duration || 30; // Default 30 seconds
+        const speed = command.speed || 500; // Default 500ms between changes
+        const colors: [number, number, number][] = [
+          [255, 0, 0], // Red
+          [255, 0, 255], // Purple
+          [0, 0, 255], // Blue
+          [0, 255, 255], // Cyan
+          [0, 255, 0], // Green
+          [255, 255, 0] // Yellow
+        ];
+
+        let colorIndex = 0;
+        const startTime = Date.now();
+
+        // Start an interval that will run for the specified duration
+        const interval = setInterval(async () => {
+          try {
+            // Set next color in sequence
+            await state.bridge.lights.setLightState(command.lightId, {
+              on: true,
+              bri: 254,
+              rgb: colors[colorIndex],
+              transitiontime: 0 // Instant transition for disco effect
+            });
+
+            // Move to next color
+            colorIndex = (colorIndex + 1) % colors.length;
+
+            // Check if we've reached the duration
+            if (Date.now() - startTime >= duration * 1000) {
+              clearInterval(interval);
+            }
+          } catch (error) {
+            console.error('Error in disco interval:', error);
+          }
+        }, speed);
+
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to start disco effect'
+        };
+      }
+
+    case 'turn_off':
+      if (!command.lightId) {
+        return { type: 'error', error: 'Missing lightId' };
+      }
+      try {
+        await state.bridge.lights.setLightState(command.lightId, {
+          on: false
+        });
+        return { type: 'success', success: true };
+      } catch (error: any) {
+        return {
+          type: 'error',
+          error: error.message || 'Failed to turn off light'
         };
       }
 
